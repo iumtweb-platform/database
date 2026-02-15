@@ -18,6 +18,7 @@ import json
 import os
 import sys
 from typing import Iterable, List, Set
+from tqdm import tqdm
 
 
 def parse_args() -> argparse.Namespace:
@@ -71,16 +72,19 @@ def try_parse_json_list(raw: str) -> Iterable[str] | None:
         return [str(item).strip() for item in parsed if str(item).strip()]
     return None
 
-
 def extract_distinct(csv_path: str, column: str, encoding: str) -> List[str]:
     distinct: Set[str] = set()
 
     with open(csv_path, "r", encoding=encoding, newline="") as handle:
+        print("Calculating total rows")
+        total_rows = sum(1 for _ in handle) - 1  # subtract header
+        handle.seek(0)
         reader = csv.DictReader(handle)
         if column not in (reader.fieldnames or []):
             raise ValueError(f"Missing columns in CSV: {column}")
 
-        for row in reader:
+        print("Starting iteration over rows")
+        for row in tqdm(reader, total=total_rows):
             raw = (row.get(column) or "").strip()
             if not raw:
                 continue
@@ -90,35 +94,47 @@ def extract_distinct(csv_path: str, column: str, encoding: str) -> List[str]:
                 distinct.update(parsed_list)
             else:
                 distinct.add(raw)
-
+        
+        print("Finished iteration over rows")
     return sorted(distinct)
 
 
 def main() -> int:
+    print("Executing parse_args")
     args = parse_args()
+    print("Executed parse_args\n")
+
+    print("Executing parse_columns")
     columns = parse_columns(args.columns)
+    print("Executed parse_columns\n")
     if not columns:
         print("No columns provided.", file=sys.stderr)
         return 2
 
+    print("Executing makedirs")
     try:
         os.makedirs(args.output_path, exist_ok=True)
     except OSError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
+    print("Executed makedirs\n")
 
     for column in columns:
+        print(f"Executing extract_distinct for {column}")
         try:
             values = extract_distinct(args.csv_path, column, args.encoding)
         except (OSError, ValueError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 1
+        print(f"Executed extract_distinct for {column}\n")
 
         output_file = os.path.join(args.output_path, f"{column}_distinct.txt")
         try:
             with open(output_file, "w", encoding="utf-8") as handle:
+                print(f"Executing write to {output_file}")
                 for value in values:
                     handle.write(f"{value}\n")
+                print(f"Executed write to {output_file}\n")
         except OSError as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 1
