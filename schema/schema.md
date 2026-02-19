@@ -26,6 +26,32 @@ erDiagram
         int favorites
         decimal episodes "nullable"
         decimal year "nullable"
+        int watching 
+        int completed 
+        int on_hold 
+        int dropped 
+        int plan_to_watch 
+        int total 
+        decimal score_1_votes 
+        decimal score_1_percentage 
+        decimal score_2_votes 
+        decimal score_2_percentage 
+        decimal score_3_votes 
+        decimal score_3_percentage 
+        decimal score_4_votes 
+        decimal score_4_percentage 
+        decimal score_5_votes 
+        decimal score_5_percentage 
+        decimal score_6_votes 
+        decimal score_6_percentage 
+        decimal score_7_votes 
+        decimal score_7_percentage 
+        decimal score_8_votes 
+        decimal score_8_percentage 
+        decimal score_9_votes 
+        decimal score_9_percentage 
+        decimal score_10_votes 
+        decimal score_10_percentage 
     }
 
 
@@ -237,9 +263,26 @@ erDiagram
 
 
 
-    USER {
+    USER {  
         int id PK
+        int gender_id FK "nullable"
         int country_id FK
+        date birthday "nullable"
+        date joined_date
+        string username
+    }
+    GENDER {
+        int id PK
+        string gender
     }
     USER }|--|{ COUNTRY : 1_to_1
+    USER }|--|{ GENDER : 0_to_1
+
+
+
+    ANIME_RECOMMENDATION {
+        int anime_id PK,FK
+        int recommended_anime_id PK,FK
+    }
+    ANIME }|--|{ ANIME_RECOMMENDATION : 1_to_n
 ```

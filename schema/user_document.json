@@ -1,0 +1,95 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "title": "User Document",
+    "description": "Schema for the user document in the NoSQL database",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Unique identifier for the user"
+        },
+        "stats": {
+            "type": "object",
+            "description": "Statistics related to the user",
+            "properties": {
+                "watching": {
+                    "type": "integer",
+                    "description": "Total number of anime currently watching by the user"
+                },
+                "completed": {
+                    "type": "integer",
+                    "description": "Total number of anime completed by the user"
+                },
+                "on_hold": {
+                    "type": "integer",
+                    "description": "Total number of anime on hold by the user"
+                },
+                "dropped": {
+                    "type": "integer",
+                    "description": "Total number of anime dropped by the user"
+                },
+                "plan_to_watch": {
+                    "type": "integer",
+                    "description": "Total number of anime planned to watch by the user"
+                }
+            },
+            "required": ["watching", "completed", "on_hold", "dropped", "plan_to_watch"],
+            "additionalProperties": false
+        },
+        "ratings": {
+            "type": "array",
+            "description": "Ratings given by the user to different anime",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "anime_id": {
+                        "type": "integer",
+                        "description": "Unique identifier for the anime"
+                    },
+                    "status": {
+                        "type": "string",
+                        "description": "Status of the anime for the user (e.g., watching, completed, on hold, dropped, plan to watch)"
+                    },
+                    "score": {
+                        "type": "integer",
+                        "description": "Rating given by the user to the anime"
+                    },
+                    "num_watched_episodes": {
+                        "type": "integer",
+                        "description": "Number of episodes watched by the user for the anime"
+                    }
+                },
+                "required": ["anime_id", "status", "score", "num_watched_episodes"],
+                "additionalProperties": false
+            }
+        },
+        "favorites": {
+            "anime": {
+                "type": "array",
+                "description": "List of favorite anime by the user",
+                "items": {
+                    "type": "integer",
+                    "description": "Unique identifier for the anime"
+                }
+            },
+            "characters": {
+                "type": "array",
+                "description": "List of favorite characters by the user",
+                "items": {
+                    "type": "integer",
+                    "description": "Unique identifier for the character"    
+                }
+            },
+            "people":{
+                "type": "array",
+                "description": "List of favorite people (e.g., voice actors, directors) by the user",
+                "items": {
+                    "type": "integer",
+                    "description": "Unique identifier for the person"
+                }
+            }
+        }
+    },
+    "required": ["id", "stats", "ratings"],
+    "additionalProperties": false
+}
