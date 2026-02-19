@@ -17,9 +17,9 @@ def parse_args() -> argparse.Namespace:
 		help="PostgreSQL connection string. Falls back to DATABASE_URL if omitted.",
 	)
 	parser.add_argument(
-		"--tables-dir",
-		default=str(Path(__file__).resolve().parent / "tables"),
-		help="Directory containing ordered .sql files (default: ddl/tables).",
+		"--scripts-dir",
+		required=True,
+		help="Directory containing ordered .sql files.",
 	)
 	return parser.parse_args()
 
@@ -33,13 +33,13 @@ def resolve_connection_string(connection_string: str | None) -> str:
 	raise ValueError("Missing connection string. Pass it as an argument or set DATABASE_URL.")
 
 
-def get_sql_files(tables_dir: Path) -> list[Path]:
-	if not tables_dir.exists() or not tables_dir.is_dir():
-		raise FileNotFoundError(f"Tables directory not found: {tables_dir}")
+def get_sql_files(scripts_dir: Path) -> list[Path]:
+	if not scripts_dir.exists() or not scripts_dir.is_dir():
+		raise FileNotFoundError(f"Scripts directory not found: {scripts_dir}")
 
-	sql_files = sorted(path for path in tables_dir.iterdir() if path.suffix == ".sql")
+	sql_files = sorted(path for path in scripts_dir.iterdir() if path.suffix == ".sql")
 	if not sql_files:
-		raise FileNotFoundError(f"No .sql files found in: {tables_dir}")
+		raise FileNotFoundError(f"No .sql files found in: {scripts_dir}")
 	return sql_files
 
 
@@ -58,7 +58,7 @@ def execute_sql_files(connection_string: str, sql_files: list[Path]) -> None:
 
 
 def load_env_variables() -> None:
-	env_path = Path(__file__).resolve().parent.parent / ".env.local"
+	env_path = Path(__file__).resolve().parent / ".env.local"
 	if env_path.exists():
 		with env_path.open() as env_file:
 			for line in env_file:
@@ -73,7 +73,7 @@ def main() -> None:
 	args = parse_args()
 	load_env_variables()
 	connection_string = resolve_connection_string(args.connection_string)
-	sql_files = get_sql_files(Path(args.tables_dir))
+	sql_files = get_sql_files(Path(args.scripts_dir))
 	execute_sql_files(connection_string, sql_files)
 	print(f"Executed {len(sql_files)} SQL file(s) successfully.")
 

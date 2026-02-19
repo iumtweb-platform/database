@@ -128,12 +128,14 @@ def main() -> int:
             return 1
         print(f"Executed extract_distinct for {column}\n")
 
-        output_file = os.path.join(args.output_path, f"{column}_distinct.txt")
+        output_file = os.path.join(args.output_path, f"{column}_distinct.csv")
         try:
-            with open(output_file, "w", encoding="utf-8") as handle:
+            with open(output_file, "w", encoding="utf-8", newline="") as handle:
                 print(f"Executing write to {output_file}")
-                for value in values:
-                    handle.write(f"{value}\n")
+                writer = csv.writer(handle)
+                writer.writerow(["id", "value"])
+                for idx, value in enumerate(values, start=1):
+                    writer.writerow([idx, value])
                 print(f"Executed write to {output_file}\n")
         except OSError as exc:
             print(f"Error: {exc}", file=sys.stderr)
