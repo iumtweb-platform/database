@@ -14,7 +14,7 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument(
 		"connection_string",
 		nargs="?",
-		help="PostgreSQL connection string. Falls back to DATABASE_URL if omitted.",
+		help="PostgreSQL connection string. Falls back to SQL_DATABASE_URL if omitted.",
 	)
 	parser.add_argument(
 		"--scripts-dir",
@@ -27,10 +27,10 @@ def parse_args() -> argparse.Namespace:
 def resolve_connection_string(connection_string: str | None) -> str:
 	if connection_string:
 		return connection_string
-	database_url = os.getenv("DATABASE_URL")
+	database_url = os.getenv("SQL_DATABASE_URL")
 	if database_url:
 		return database_url
-	raise ValueError("Missing connection string. Pass it as an argument or set DATABASE_URL.")
+	raise ValueError("Missing connection string. Pass it as an argument or set SQL_DATABASE_URL.")
 
 
 def get_sql_files(scripts_dir: Path) -> list[Path]:

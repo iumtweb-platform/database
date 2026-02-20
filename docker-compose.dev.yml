@@ -10,11 +10,25 @@ services:
     environment:
       POSTGRES_PASSWORD: mysecretpassword
 
-  # nosql-db:
-  #   image: mongo
-  #   restart: always
-  #   # set shared memory limit when using docker compose
-  #   shm_size: 128mb
+  nosql-db:
+    image: mongo
+    restart: unless-stopped
+    ports:
+      - 27017:27017
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: mongo
+      MONGO_INITDB_ROOT_PASSWORD: mysecretpassword
+
+  mongo-express:
+    image: mongo-express
+    restart: unless-stopped
+    ports:
+      - 8081:8081
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://mongo:mysecretpassword@nosql-db:27017/
+      ME_CONFIG_BASICAUTH_ENABLED: true
+      ME_CONFIG_BASICAUTH_USERNAME: mongo
+      ME_CONFIG_BASICAUTH_PASSWORD: mysecretpassword
 
   adminer: # provides a web interface to manage the database
     image: adminer

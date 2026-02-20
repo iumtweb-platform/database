@@ -5,5 +5,6 @@ pkgs.mkShell {
 		python3
 		python3Packages.tqdm
 		python3Packages.psycopg
+		python3Packages.pymongo
 	];
 }
