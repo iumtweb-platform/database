@@ -1,0 +1,8 @@
+old,new
+anime_mal_id,anime_id
+character_mal_id,character_id
+name_kanji,name_japanese
+image,image_url
+joined,joined_date
+mal_id,anime_id
+recommendation_mal_id,recommendation_anime_id

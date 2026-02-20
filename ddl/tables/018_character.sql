@@ -5,5 +5,5 @@ CREATE TABLE character (
     name_japanese varchar(255),
     image_url text NOT NULL,
     favorites integer NOT NULL,
-    about varchar(5000)
+    about varchar(7000)
 );
