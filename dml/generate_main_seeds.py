@@ -240,15 +240,15 @@ def parse_date(raw: str | None) -> str | None:
 
     iso_candidate = value[:10]
     try:
-        datetime.strptime(iso_candidate, "%Y-%m-%d")
-        return iso_candidate
+        parsed = datetime.strptime(iso_candidate, "%Y-%m-%d")
+        return f"{parsed.year:04d}-{parsed.month:02d}-{parsed.day:02d}"
     except ValueError:
         pass
 
     for fmt in ("%b %d, %Y", "%B %d, %Y", "%b %d,%Y", "%B %d,%Y"):
         try:
             parsed = datetime.strptime(value, fmt)
-            return parsed.strftime("%Y-%m-%d")
+            return f"{parsed.year:04d}-{parsed.month:02d}-{parsed.day:02d}"
         except ValueError:
             continue
 
