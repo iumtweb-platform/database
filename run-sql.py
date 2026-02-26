@@ -59,16 +59,16 @@ def execute_sql_files(connection_string: str, sql_files: list[Path]) -> None:
 
 
 def load_env_variables() -> None:
-	env_path = Path(__file__).resolve().parent / ".env.local"
-	if env_path.exists():
-		with env_path.open() as env_file:
-			for line in env_file:
-				line = line.strip()
-				if not line or line.startswith("#"):
-					continue
-				key, sep, value = line.partition("=")
-				if sep:
-					os.environ[key.strip()] = value.strip()
+    env_path = Path(__file__).resolve().parent / ".env.local"
+    if env_path.exists():
+        with env_path.open(encoding="utf-8") as env_file:
+            for line in env_file:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                key, sep, value = line.partition("=")
+                if sep:
+                    os.environ[key.strip()] = os.path.expandvars(value.strip())
 
 def main() -> None:
 	args = parse_args()

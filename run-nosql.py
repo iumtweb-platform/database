@@ -17,7 +17,6 @@ def chunked(items: list[dict[str, Any]], batch_size: int) -> Iterator[list[dict[
     for idx in range(0, len(items), batch_size):
         yield items[idx : idx + batch_size]
 
-
 def load_env_variables() -> None:
     env_path = Path(__file__).resolve().parent / ".env.local"
     if env_path.exists():
@@ -28,8 +27,7 @@ def load_env_variables() -> None:
                     continue
                 key, sep, value = line.partition("=")
                 if sep:
-                    os.environ[key.strip()] = value.strip()
-
+                    os.environ[key.strip()] = os.path.expandvars(value.strip())
 
 def resolve_connection_string(connection_string: str | None) -> str:
     if connection_string:
@@ -39,6 +37,11 @@ def resolve_connection_string(connection_string: str | None) -> str:
         return database_url
     raise ValueError("Missing connection string. Pass it as an argument or set NOSQL_DATABASE_URL.")
 
+def resolve_database_name() -> str:
+    database_name = os.getenv("MONGO_DB")
+    if database_name:
+        return database_name
+    raise ValueError("Missing database name. Set MONGO_DB environment variable.")
 
 def load_json_array(path: Path, label: str) -> list[dict[str, Any]]:
     if not path.exists():
@@ -82,6 +85,9 @@ def insert_documents(
                 user_result = users_collection.insert_many(batch, ordered=False)
                 inserted_users += len(user_result.inserted_ids)
             print(f"Inserted {inserted_users} user documents into {database_name}.users")
+
+            users_collection.create_index("id")
+            print("Created index on users.id")
         else:
             print("No user documents to insert.")
 
@@ -95,6 +101,18 @@ def insert_documents(
                 rating_result = ratings_collection.insert_many(batch, ordered=False)
                 inserted_ratings += len(rating_result.inserted_ids)
             print(f"Inserted {inserted_ratings} rating documents into {database_name}.ratings")
+
+            ratings_collection.create_index("id")
+            print("Created index on ratings.id")
+
+            ratings_collection.create_index("user_id")
+            print("Created index on ratings.user_id")
+
+            ratings_collection.create_index("anime_id")
+            print("Created index on ratings.anime_id")
+
+            ratings_collection.create_index("status")
+            print("Created index on ratings.status")
         else:
             print("No rating documents to insert.")
 
@@ -115,7 +133,7 @@ def parse_args() -> argparse.Namespace:
         nargs="?",
         help="MongoDB connection string. Falls back to NOSQL_DATABASE_URL if omitted.",
     )
-    parser.add_argument("--database", required=True, help="MongoDB database name.")
+    parser.add_argument("--database", help="MongoDB database name. Falls back to MONGO_DB if omitted.")
     parser.add_argument(
         "--input-dir",
         default="dml/document-seeds",
@@ -149,6 +167,7 @@ def main() -> None:
 
     try:
         connection_string = resolve_connection_string(args.connection_string)
+        database_name = resolve_database_name()
 
         input_dir = Path(args.input_dir)
         users_path = Path(args.users_file) if args.users_file else input_dir / "users.json"
@@ -159,7 +178,7 @@ def main() -> None:
 
         insert_documents(
             connection_string=connection_string,
-            database_name=args.database,
+            database_name=database_name,
             users=users,
             ratings=ratings,
             clear_collections=args.clear,

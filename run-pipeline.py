@@ -34,11 +34,6 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--nosql-database",
-        required=True,
-        help="MongoDB database name for run-nosql.py.",
-    )
-    parser.add_argument(
         "--seed",
         type=int,
         default=None,
@@ -117,8 +112,6 @@ def main() -> None:
     nosql_load_cmd = [
         python,
         "run-nosql.py",
-        "--database",
-        args.nosql_database,
         "--input-dir",
         "dml/document-seeds",
         "--batch-size",

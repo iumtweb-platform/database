@@ -1,0 +1,29 @@
+name: iumtweb
+services:
+
+  sql-db:
+    image: postgres
+    restart: unless-stopped
+    # set shared memory limit when using docker compose
+    shm_size: 128mb
+    ports:
+      - 5432:5432
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - sql-db-data:/var/lib/postgresql
+
+  nosql-db:
+    image: mongo
+    restart: unless-stopped
+    ports:
+      - 27017:27017
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+    volumes:
+      - nosql-db-data:/data/db
+
+volumes:
+  sql-db-data:
+  nosql-db-data:
