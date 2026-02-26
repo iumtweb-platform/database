@@ -43,7 +43,7 @@ def load_env_variables() -> None:
                     continue
                 key, sep, value = line.partition("=")
                 if sep:
-                    os.environ[key.strip()] = value.strip()
+                    os.environ[key.strip()] = os.path.expandvars(value.strip())
 
 
 def resolve_sql_connection_string(connection_string: str | None) -> str:
@@ -90,12 +90,26 @@ def normalize_status(status: str) -> str:
     return status.strip().replace(" ", "_").lower()
 
 
-def load_profiles(usernames: set[str]) -> dict[str, dict[str, Any]]:
+def should_enable_tqdm(mode: str) -> bool:
+    if mode == "off":
+        return False
+    if mode == "linear":
+        return sys.stdout.isatty()
+    return True
+
+
+def load_profiles(usernames: set[str], show_progress: bool) -> dict[str, dict[str, Any]]:
     profiles: dict[str, dict[str, Any]] = {}
     total_rows = count_data_rows(PROFILES_CSV)
     with PROFILES_CSV.open("r", encoding="utf-8") as file:
         reader = csv.DictReader(file)
-        for row in tqdm(reader, total=total_rows, desc="Loading profiles", unit="row"):
+        for row in tqdm(
+            reader,
+            total=total_rows,
+            desc="Loading profiles",
+            unit="row",
+            disable=not show_progress,
+        ):
             username = row.get("username", "")
             if username in usernames:
                 profiles[username] = {
@@ -110,12 +124,18 @@ def load_profiles(usernames: set[str]) -> dict[str, dict[str, Any]]:
     return profiles
 
 
-def load_ratings(usernames: set[str]) -> dict[str, list[dict[str, int | str]]]:
+def load_ratings(usernames: set[str], show_progress: bool) -> dict[str, list[dict[str, int | str]]]:
     ratings: dict[str, list[dict[str, int | str]]] = defaultdict(list)
     total_rows = count_data_rows(RATINGS_CSV)
     with RATINGS_CSV.open("r", encoding="utf-8") as file:
         reader = csv.DictReader(file)
-        for row in tqdm(reader, total=total_rows, desc="Loading ratings", unit="row"):
+        for row in tqdm(
+            reader,
+            total=total_rows,
+            desc="Loading ratings",
+            unit="row",
+            disable=not show_progress,
+        ):
             username = row.get("username", "")
             if username in usernames:
                 ratings[username].append(
@@ -129,14 +149,20 @@ def load_ratings(usernames: set[str]) -> dict[str, list[dict[str, int | str]]]:
     return dict(ratings)
 
 
-def load_favorites(usernames: set[str]) -> dict[str, dict[str, list[int]]]:
+def load_favorites(usernames: set[str], show_progress: bool) -> dict[str, dict[str, list[int]]]:
     favorites: dict[str, dict[str, list[int]]] = defaultdict(
         lambda: {"anime": [], "characters": [], "people": []}
     )
     total_rows = count_data_rows(FAVS_CSV)
     with FAVS_CSV.open("r", encoding="utf-8") as file:
         reader = csv.DictReader(file)
-        for row in tqdm(reader, total=total_rows, desc="Loading favorites", unit="row"):
+        for row in tqdm(
+            reader,
+            total=total_rows,
+            desc="Loading favorites",
+            unit="row",
+            disable=not show_progress,
+        ):
             username = row.get("username", "")
             if username in usernames:
                 fav_type = str(row.get("fav_type", "")).strip()
@@ -155,6 +181,7 @@ def load_favorites(usernames: set[str]) -> dict[str, dict[str, list[int]]]:
 def build_rating_documents(
     ratings_data: dict[str, list[dict[str, int | str]]],
     user_id_to_username: dict[int, str],
+    show_progress: bool,
 ) -> tuple[dict[int, list[int]], list[dict[str, int | str]]]:
     rating_documents: list[dict[str, int | str]] = []
     user_rating_ids: dict[int, list[int]] = defaultdict(list)
@@ -164,6 +191,7 @@ def build_rating_documents(
         sorted(user_id_to_username.keys()),
         desc="Building rating documents",
         unit="user",
+        disable=not show_progress,
     ):
         username = user_id_to_username[user_id]
         for rating_data in ratings_data.get(username, []):
@@ -187,6 +215,7 @@ def build_user_documents(
     profiles_data: dict[str, dict[str, Any]],
     user_rating_ids: dict[int, list[int]],
     favorites_data: dict[str, dict[str, list[int]]],
+    show_progress: bool,
 ) -> list[dict[str, Any]]:
     user_documents: list[dict[str, Any]] = []
 
@@ -194,6 +223,7 @@ def build_user_documents(
         sorted(user_id_to_username.keys()),
         desc="Building user documents",
         unit="user",
+        disable=not show_progress,
     ):
         username = user_id_to_username[user_id]
         profile = profiles_data.get(
@@ -240,12 +270,29 @@ def parse_user_ids(raw_ids: str) -> list[int]:
     return ids
 
 
+def parse_user_ids_file(path: str) -> list[int]:
+    user_ids_path = Path(path)
+    if not user_ids_path.exists() or not user_ids_path.is_file():
+        raise ValueError(f"User IDs file not found: {user_ids_path}")
+
+    raw_content = user_ids_path.read_text(encoding="utf-8").strip()
+    if not raw_content:
+        raise ValueError(f"User IDs file is empty: {user_ids_path}")
+
+    normalized = raw_content.replace("\n", ",").replace("\r", ",")
+    return parse_user_ids(normalized)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate NoSQL JSON seed documents.")
-    parser.add_argument(
+    user_id_group = parser.add_mutually_exclusive_group(required=True)
+    user_id_group.add_argument(
         "--user-ids",
-        required=True,
         help="Comma-separated list of app_user IDs from PostgreSQL (e.g., 14,20,33)",
+    )
+    user_id_group.add_argument(
+        "--user-ids-file",
+        help="Path to a file containing app_user IDs (comma or newline separated).",
     )
     parser.add_argument(
         "--sql-connection-string",
@@ -256,12 +303,22 @@ def main() -> None:
         default=str(OUTPUT_DIR),
         help="Output directory for generated JSON files (default: dml/document-seeds)",
     )
+    parser.add_argument(
+        "--progress",
+        choices=("linear", "detailed", "off"),
+        default="detailed",
+        help="Progress display mode (default: detailed).",
+    )
 
     args = parser.parse_args()
     load_env_variables()
+    show_progress = should_enable_tqdm(args.progress)
 
     try:
-        user_ids = parse_user_ids(args.user_ids)
+        if args.user_ids_file:
+            user_ids = parse_user_ids_file(args.user_ids_file)
+        else:
+            user_ids = parse_user_ids(args.user_ids)
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -278,16 +335,21 @@ def main() -> None:
         sys.exit(1)
 
     usernames = set(user_id_to_username.values())
-    profiles_data = load_profiles(usernames)
-    ratings_data = load_ratings(usernames)
-    favorites_data = load_favorites(usernames)
+    profiles_data = load_profiles(usernames, show_progress=show_progress)
+    ratings_data = load_ratings(usernames, show_progress=show_progress)
+    favorites_data = load_favorites(usernames, show_progress=show_progress)
 
-    user_rating_ids, rating_documents = build_rating_documents(ratings_data, user_id_to_username)
+    user_rating_ids, rating_documents = build_rating_documents(
+        ratings_data,
+        user_id_to_username,
+        show_progress=show_progress,
+    )
     user_documents = build_user_documents(
         user_id_to_username,
         profiles_data,
         user_rating_ids,
         favorites_data,
+        show_progress=show_progress,
     )
 
     output_dir = Path(args.output_dir)

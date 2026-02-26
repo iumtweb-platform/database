@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import argparse
 import csv
+import sys
 from pathlib import Path
 
 from tqdm import tqdm
@@ -37,7 +39,26 @@ def sql_escape(value: str) -> str:
     return value.replace("'", "''")
 
 
-def read_distinct_values(file_path: Path) -> list[tuple[int, str]]:
+def should_enable_tqdm(mode: str) -> bool:
+    if mode == "off":
+        return False
+    if mode == "linear":
+        return sys.stdout.isatty()
+    return True
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Generate SQL lookup seed files.")
+    parser.add_argument(
+        "--progress",
+        choices=("linear", "detailed", "off"),
+        default="detailed",
+        help="Progress display mode (default: detailed).",
+    )
+    return parser.parse_args()
+
+
+def read_distinct_values(file_path: Path, show_progress: bool) -> list[tuple[int, str]]:
     rows: list[tuple[int, str]] = []
     with file_path.open("r", encoding="utf-8", newline="") as handle:
         total_rows = max(sum(1 for _ in handle) - 1, 0)
@@ -48,7 +69,13 @@ def read_distinct_values(file_path: Path) -> list[tuple[int, str]]:
         if not required.issubset(headers):
             raise ValueError(f"CSV must contain columns {sorted(required)}: {file_path}")
 
-        for row in tqdm(reader, total=total_rows, desc=f"Reading {file_path.name}", unit="row"):
+        for row in tqdm(
+            reader,
+            total=total_rows,
+            desc=f"Reading {file_path.name}",
+            unit="row",
+            disable=not show_progress,
+        ):
             raw_id = (row.get("id") or "").strip()
             raw_value = (row.get("value") or "").strip()
             if not raw_id or not raw_value:
@@ -89,18 +116,22 @@ def render_seed_sql(table_name: str, value_column: str, rows: list[tuple[int, st
 
 
 def main() -> None:
+    args = parse_args()
+    show_progress = should_enable_tqdm(args.progress)
+
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     for number, source_filename, table_name, value_column in tqdm(
         MAPPINGS,
         desc="Generating lookup seeds",
         unit="table",
+        disable=not show_progress,
     ):
         source_path = INPUT_DIR / source_filename
         if not source_path.exists():
             raise FileNotFoundError(f"Missing source file: {source_path}")
 
-        rows = read_distinct_values(source_path)
+        rows = read_distinct_values(source_path, show_progress=show_progress)
         sql = render_seed_sql(table_name, value_column, rows)
 
         out_filename = f"{number}_{table_name}_seed.sql"

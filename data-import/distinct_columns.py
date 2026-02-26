@@ -45,7 +45,21 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Path to the output folder.",
     )
+    parser.add_argument(
+        "--progress",
+        choices=("linear", "detailed", "off"),
+        default="detailed",
+        help="Progress display mode (default: detailed).",
+    )
     return parser.parse_args()
+
+
+def should_enable_tqdm(mode: str) -> bool:
+    if mode == "off":
+        return False
+    if mode == "linear":
+        return sys.stdout.isatty()
+    return True
 
 
 def parse_columns(value: str) -> List[str]:
@@ -72,7 +86,7 @@ def try_parse_json_list(raw: str) -> Iterable[str] | None:
         return [str(item).strip() for item in parsed if str(item).strip()]
     return None
 
-def extract_distinct(csv_path: str, column: str, encoding: str) -> List[str]:
+def extract_distinct(csv_path: str, column: str, encoding: str, show_progress: bool) -> List[str]:
     distinct: Set[str] = set()
 
     with open(csv_path, "r", encoding=encoding, newline="") as handle:
@@ -82,7 +96,7 @@ def extract_distinct(csv_path: str, column: str, encoding: str) -> List[str]:
         if column not in (reader.fieldnames or []):
             raise ValueError(f"Missing columns in CSV: {column}")
 
-        for row in tqdm(reader, total=total_rows):
+        for row in tqdm(reader, total=total_rows, disable=not show_progress):
             raw = (row.get(column) or "").strip()
             if not raw:
                 continue
@@ -98,6 +112,7 @@ def extract_distinct(csv_path: str, column: str, encoding: str) -> List[str]:
 
 def main() -> int:
     args = parse_args()
+    show_progress = should_enable_tqdm(args.progress)
 
     columns = parse_columns(args.columns)
     if not columns:
@@ -113,7 +128,7 @@ def main() -> int:
     for column in columns:
         try:
             print(f"\nProcessing column: {column}")
-            values = extract_distinct(args.csv_path, column, args.encoding)
+            values = extract_distinct(args.csv_path, column, args.encoding, show_progress)
         except (OSError, ValueError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 1

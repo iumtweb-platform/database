@@ -45,7 +45,21 @@ def parse_args() -> argparse.Namespace:
         default="utf-8",
         help="CSV file encoding passed to distinct_columns.py (default: utf-8).",
     )
+    parser.add_argument(
+        "--progress",
+        choices=("linear", "detailed", "off"),
+        default="detailed",
+        help="Progress display mode (default: detailed).",
+    )
     return parser.parse_args()
+
+
+def should_enable_tqdm(mode: str) -> bool:
+    if mode == "off":
+        return False
+    if mode == "linear":
+        return sys.stdout.isatty()
+    return True
 
 
 def main() -> None:
@@ -56,7 +70,12 @@ def main() -> None:
     if not script.exists():
         raise SystemExit(f"Missing script: {script}")
 
-    for csv_path, columns, output_path in tqdm(JOBS, desc="Generating distinct CSV groups", unit="group"):
+    for csv_path, columns, output_path in tqdm(
+        JOBS,
+        desc="Generating distinct CSV groups",
+        unit="group",
+        disable=not should_enable_tqdm(args.progress),
+    ):
         command = [
             python,
             str(script),
@@ -68,6 +87,8 @@ def main() -> None:
             args.encoding,
             "--output-path",
             str(ROOT / output_path),
+            "--progress",
+            args.progress,
         ]
         print("$ " + " ".join(command))
         try:

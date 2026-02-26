@@ -61,6 +61,7 @@ def insert_documents(
     ratings: list[dict[str, Any]],
     clear_collections: bool,
     batch_size: int,
+    show_progress: bool,
 ) -> None:
     try:
         client = MongoClient(connection_string, serverSelectionTimeoutMS=5000)
@@ -81,6 +82,7 @@ def insert_documents(
                 chunked(users, batch_size),
                 desc="Inserting users",
                 unit="batch",
+                disable=not show_progress,
             ):
                 user_result = users_collection.insert_many(batch, ordered=False)
                 inserted_users += len(user_result.inserted_ids)
@@ -97,6 +99,7 @@ def insert_documents(
                 chunked(ratings, batch_size),
                 desc="Inserting ratings",
                 unit="batch",
+                disable=not show_progress,
             ):
                 rating_result = ratings_collection.insert_many(batch, ordered=False)
                 inserted_ratings += len(rating_result.inserted_ids)
@@ -158,7 +161,21 @@ def parse_args() -> argparse.Namespace:
         default=1000,
         help="Number of documents per insert batch (default: 1000).",
     )
+    parser.add_argument(
+        "--progress",
+        choices=("linear", "detailed", "off"),
+        default="detailed",
+        help="Progress display mode (default: detailed).",
+    )
     return parser.parse_args()
+
+
+def should_enable_tqdm(mode: str) -> bool:
+    if mode == "off":
+        return False
+    if mode == "linear":
+        return sys.stdout.isatty()
+    return True
 
 
 def main() -> None:
@@ -183,6 +200,7 @@ def main() -> None:
             ratings=ratings,
             clear_collections=args.clear,
             batch_size=max(1, args.batch_size),
+            show_progress=should_enable_tqdm(args.progress),
         )
 
         print("NoSQL load completed successfully.")

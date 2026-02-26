@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from pathlib import Path
 
 import psycopg
@@ -22,7 +23,21 @@ def parse_args() -> argparse.Namespace:
 		required=True,
 		help="Directory containing ordered .sql files.",
 	)
+	parser.add_argument(
+		"--progress",
+		choices=("linear", "detailed", "off"),
+		default="detailed",
+		help="Progress display mode (default: detailed).",
+	)
 	return parser.parse_args()
+
+
+def should_enable_tqdm(mode: str) -> bool:
+	if mode == "off":
+		return False
+	if mode == "linear":
+		return sys.stdout.isatty()
+	return True
 
 
 def resolve_connection_string(connection_string: str | None) -> str:
@@ -44,10 +59,15 @@ def get_sql_files(scripts_dir: Path) -> list[Path]:
 	return sql_files
 
 
-def execute_sql_files(connection_string: str, sql_files: list[Path]) -> None:
+def execute_sql_files(connection_string: str, sql_files: list[Path], show_progress: bool) -> None:
 	with psycopg.connect(connection_string) as connection:
 		with connection.cursor() as cursor:
-			for sql_file in tqdm(sql_files, desc="Executing SQL files", unit="file"):
+			for sql_file in tqdm(
+				sql_files,
+				desc="Executing SQL files",
+				unit="file",
+				disable=not show_progress,
+			):
 				sql = sql_file.read_text(encoding="utf-8").strip()
 				if not sql:
 					continue
@@ -75,7 +95,7 @@ def main() -> None:
 	load_env_variables()
 	connection_string = resolve_connection_string(args.connection_string)
 	sql_files = get_sql_files(Path(args.scripts_dir))
-	execute_sql_files(connection_string, sql_files)
+	execute_sql_files(connection_string, sql_files, show_progress=should_enable_tqdm(args.progress))
 	print(f"Executed {len(sql_files)} SQL file(s) successfully.")
 
 

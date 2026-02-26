@@ -5,6 +5,7 @@ import ast
 import csv
 import json
 import random
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -126,7 +127,21 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Random seed for reproducible anime ID sampling",
     )
+    parser.add_argument(
+        "--progress",
+        choices=("linear", "detailed", "off"),
+        default="detailed",
+        help="Progress display mode (default: detailed).",
+    )
     return parser.parse_args()
+
+
+def should_enable_tqdm(mode: str) -> bool:
+    if mode == "off":
+        return False
+    if mode == "linear":
+        return sys.stdout.isatty()
+    return True
 
 
 def prompt_for_n() -> int:
@@ -189,7 +204,7 @@ def count_data_rows(file_path: Path) -> int:
         return max(sum(1 for _ in handle) - 1, 0)
 
 
-def read_lookup_map(file_path: Path) -> dict[str, int]:
+def read_lookup_map(file_path: Path, show_progress: bool) -> dict[str, int]:
     mapping: dict[str, int] = {}
     total_rows = count_data_rows(file_path)
     with file_path.open("r", encoding="utf-8", newline="") as handle:
@@ -199,7 +214,13 @@ def read_lookup_map(file_path: Path) -> dict[str, int]:
         if not required.issubset(headers):
             raise GeneratorError(f"Lookup CSV must contain columns {sorted(required)}: {file_path}")
 
-        for row in tqdm(reader, total=total_rows, desc=f"Lookup {file_path.name}", unit="row"):
+        for row in tqdm(
+            reader,
+            total=total_rows,
+            desc=f"Lookup {file_path.name}",
+            unit="row",
+            disable=not show_progress,
+        ):
             raw_id = (row.get("id") or "").strip()
             raw_value = (row.get("value") or "").strip()
             if not raw_id or not raw_value:
@@ -295,6 +316,7 @@ def sample_app_users(
     random_seed: int | None,
     gender_map: dict[str, int],
     country_map: dict[str, int],
+    show_progress: bool,
 ) -> list[tuple[object, ...]]:
     profiles_path = DATASETS_DIR / "profiles.csv"
     rng = random.Random(None if random_seed is None else random_seed + 1000)
@@ -311,7 +333,13 @@ def sample_app_users(
             raise GeneratorError(f"Missing required columns in {profiles_path}")
 
         for row_idx, row in enumerate(
-            tqdm(reader, total=progress_total_rows, desc="Sampling app users", unit="row"),
+            tqdm(
+                reader,
+                total=progress_total_rows,
+                desc="Sampling app users",
+                unit="row",
+                disable=not show_progress,
+            ),
             start=1,
         ):
             total_rows += 1
@@ -355,7 +383,7 @@ def sample_app_users(
     return app_users
 
 
-def choose_anime_ids(n: int, random_seed: int | None) -> set[int]:
+def choose_anime_ids(n: int, random_seed: int | None, show_progress: bool) -> set[int]:
     source_path = OUTPUT_DIR / "details" / "mal_id_distinct.csv"
     ids: list[int] = []
 
@@ -364,7 +392,13 @@ def choose_anime_ids(n: int, random_seed: int | None) -> set[int]:
         reader = csv.DictReader(handle)
         if "value" not in (reader.fieldnames or []):
             raise GeneratorError(f"Missing 'value' column in {source_path}")
-        for row in tqdm(reader, total=total_rows, desc="Reading anime ID pool", unit="row"):
+        for row in tqdm(
+            reader,
+            total=total_rows,
+            desc="Reading anime ID pool",
+            unit="row",
+            disable=not show_progress,
+        ):
             value = parse_int(row.get("value"))
             if value is not None:
                 ids.append(value)
@@ -409,31 +443,47 @@ def render_insert_sql(
 
 def generate() -> None:
     args = parse_args()
+    show_progress = should_enable_tqdm(args.progress)
     n = args.n if args.n is not None else prompt_for_n()
 
     if n <= 0:
         raise GeneratorError("N must be greater than 0")
 
-    selected_anime_ids = choose_anime_ids(n, args.seed)
+    selected_anime_ids = choose_anime_ids(n, args.seed, show_progress=show_progress)
     print(f"Selected {len(selected_anime_ids)} anime IDs")
 
-    type_map = read_lookup_map(OUTPUT_DIR / "details" / "type_distinct.csv")
-    rating_map = read_lookup_map(OUTPUT_DIR / "details" / "rating_distinct.csv")
-    season_map = read_lookup_map(OUTPUT_DIR / "details" / "season_distinct.csv")
-    source_map = read_lookup_map(OUTPUT_DIR / "details" / "source_distinct.csv")
-    status_map = read_lookup_map(OUTPUT_DIR / "details" / "status_distinct.csv")
-    genre_map = read_lookup_map(OUTPUT_DIR / "details" / "genres_distinct.csv")
-    explicit_genre_map = read_lookup_map(OUTPUT_DIR / "details" / "explicit_genres_distinct.csv")
-    licensor_map = read_lookup_map(OUTPUT_DIR / "details" / "licensors_distinct.csv")
-    demographic_map = read_lookup_map(OUTPUT_DIR / "details" / "demographics_distinct.csv")
-    producer_map = read_lookup_map(OUTPUT_DIR / "details" / "producers_distinct.csv")
-    streaming_service_map = read_lookup_map(OUTPUT_DIR / "details" / "streaming_distinct.csv")
-    studio_map = read_lookup_map(OUTPUT_DIR / "details" / "studios_distinct.csv")
-    theme_map = read_lookup_map(OUTPUT_DIR / "details" / "themes_distinct.csv")
-    role_map = read_lookup_map(OUTPUT_DIR / "character_anime_works" / "role_distinct.csv")
-    country_map = read_lookup_map(OUTPUT_DIR / "profiles" / "location_distinct.csv")
-    gender_map = read_lookup_map(OUTPUT_DIR / "profiles" / "gender_distinct.csv")
-    language_map = read_lookup_map(OUTPUT_DIR / "person_voice_works" / "language_distinct.csv")
+    type_map = read_lookup_map(OUTPUT_DIR / "details" / "type_distinct.csv", show_progress=show_progress)
+    rating_map = read_lookup_map(OUTPUT_DIR / "details" / "rating_distinct.csv", show_progress=show_progress)
+    season_map = read_lookup_map(OUTPUT_DIR / "details" / "season_distinct.csv", show_progress=show_progress)
+    source_map = read_lookup_map(OUTPUT_DIR / "details" / "source_distinct.csv", show_progress=show_progress)
+    status_map = read_lookup_map(OUTPUT_DIR / "details" / "status_distinct.csv", show_progress=show_progress)
+    genre_map = read_lookup_map(OUTPUT_DIR / "details" / "genres_distinct.csv", show_progress=show_progress)
+    explicit_genre_map = read_lookup_map(
+        OUTPUT_DIR / "details" / "explicit_genres_distinct.csv",
+        show_progress=show_progress,
+    )
+    licensor_map = read_lookup_map(OUTPUT_DIR / "details" / "licensors_distinct.csv", show_progress=show_progress)
+    demographic_map = read_lookup_map(
+        OUTPUT_DIR / "details" / "demographics_distinct.csv",
+        show_progress=show_progress,
+    )
+    producer_map = read_lookup_map(OUTPUT_DIR / "details" / "producers_distinct.csv", show_progress=show_progress)
+    streaming_service_map = read_lookup_map(
+        OUTPUT_DIR / "details" / "streaming_distinct.csv",
+        show_progress=show_progress,
+    )
+    studio_map = read_lookup_map(OUTPUT_DIR / "details" / "studios_distinct.csv", show_progress=show_progress)
+    theme_map = read_lookup_map(OUTPUT_DIR / "details" / "themes_distinct.csv", show_progress=show_progress)
+    role_map = read_lookup_map(
+        OUTPUT_DIR / "character_anime_works" / "role_distinct.csv",
+        show_progress=show_progress,
+    )
+    country_map = read_lookup_map(OUTPUT_DIR / "profiles" / "location_distinct.csv", show_progress=show_progress)
+    gender_map = read_lookup_map(OUTPUT_DIR / "profiles" / "gender_distinct.csv", show_progress=show_progress)
+    language_map = read_lookup_map(
+        OUTPUT_DIR / "person_voice_works" / "language_distinct.csv",
+        show_progress=show_progress,
+    )
 
     character_ids_needed: set[int] = set()
     character_anime_rows_map: dict[tuple[int, int], tuple[int, int, int]] = {}
@@ -447,7 +497,13 @@ def generate() -> None:
             raise GeneratorError(f"Missing required columns in {character_anime_path}")
 
         skipped_no_role = 0
-        for row in tqdm(reader, total=character_anime_total_rows, desc="Reading character-anime works", unit="row"):
+        for row in tqdm(
+            reader,
+            total=character_anime_total_rows,
+            desc="Reading character-anime works",
+            unit="row",
+            disable=not show_progress,
+        ):
             anime_id = parse_int(row.get("anime_mal_id"))
             if anime_id is None or anime_id not in selected_anime_ids:
                 continue
@@ -482,7 +538,13 @@ def generate() -> None:
         if not required_cols.issubset(set(reader.fieldnames or [])):
             raise GeneratorError(f"Missing required columns in {characters_path}")
 
-        for row in tqdm(reader, total=characters_total_rows, desc="Reading characters", unit="row"):
+        for row in tqdm(
+            reader,
+            total=characters_total_rows,
+            desc="Reading characters",
+            unit="row",
+            disable=not show_progress,
+        ):
             character_id = parse_int(row.get("character_mal_id"))
             if character_id is None or character_id not in character_ids_needed:
                 continue
@@ -555,7 +617,13 @@ def generate() -> None:
         unknown_streaming_services = 0
         unknown_studios = 0
         unknown_themes = 0
-        for row in tqdm(reader, total=details_total_rows, desc="Reading anime details", unit="row"):
+        for row in tqdm(
+            reader,
+            total=details_total_rows,
+            desc="Reading anime details",
+            unit="row",
+            disable=not show_progress,
+        ):
             anime_id = parse_int(row.get("mal_id"))
             if anime_id is None or anime_id not in selected_anime_ids:
                 continue
@@ -704,7 +772,13 @@ def generate() -> None:
         if not required_cols.issubset(set(reader.fieldnames or [])):
             raise GeneratorError(f"Missing required columns in {stats_path}")
 
-        for row in tqdm(reader, total=stats_total_rows, desc="Reading anime stats", unit="row"):
+        for row in tqdm(
+            reader,
+            total=stats_total_rows,
+            desc="Reading anime stats",
+            unit="row",
+            disable=not show_progress,
+        ):
             anime_id = parse_int(row.get("mal_id"))
             if anime_id is None or anime_id not in anime_base_rows:
                 continue
@@ -727,25 +801,34 @@ def generate() -> None:
 
     anime_rows: list[tuple[object, ...]] = []
     skipped_anime = 0
-    for anime_id in tqdm(sorted(selected_anime_ids), desc="Building anime rows", unit="anime"):
+    skipped_missing_details = 0
+    skipped_missing_stats = 0
+    skipped_missing_lookup = 0
+    skipped_missing_text = 0
+    for anime_id in tqdm(
+        sorted(selected_anime_ids),
+        desc="Building anime rows",
+        unit="anime",
+        disable=not show_progress,
+    ):
         record = anime_base_rows.get(anime_id)
         if record is None:
-            print(f"Warning: skipping anime {anime_id} (missing details row)")
             skipped_anime += 1
+            skipped_missing_details += 1
             continue
         if anime_id not in stats_found:
-            print(f"Warning: skipping anime {anime_id} (missing stats row)")
             skipped_anime += 1
+            skipped_missing_stats += 1
             continue
 
         if any(record.get(name) is None for name in REQUIRED_ANIME_IDS):
-            print(f"Warning: skipping anime {anime_id} (missing source/status lookup mapping)")
             skipped_anime += 1
+            skipped_missing_lookup += 1
             continue
 
         if any(not str(record.get(name) or "").strip() for name in REQUIRED_ANIME_TEXT):
-            print(f"Warning: skipping anime {anime_id} (missing required text columns)")
             skipped_anime += 1
+            skipped_missing_text += 1
             continue
 
         anime_rows.append(tuple(record[col] for col in ANIME_COLUMNS))
@@ -794,7 +877,13 @@ def generate() -> None:
         if not required_cols.issubset(set(reader.fieldnames or [])):
             raise GeneratorError(f"Missing required columns in {recommendations_path}")
 
-        for row in tqdm(reader, total=recommendations_total_rows, desc="Reading recommendations", unit="row"):
+        for row in tqdm(
+            reader,
+            total=recommendations_total_rows,
+            desc="Reading recommendations",
+            unit="row",
+            disable=not show_progress,
+        ):
             anime_id = parse_int(row.get("mal_id"))
             recommended_anime_id = parse_int(row.get("recommendation_mal_id"))
             if anime_id is None or recommended_anime_id is None:
@@ -831,6 +920,7 @@ def generate() -> None:
             total=character_nickname_total_rows,
             desc="Reading character nicknames",
             unit="row",
+            disable=not show_progress,
         ):
             character_id = parse_int(row.get("character_mal_id"))
             nickname = normalize_text(row.get("nickname"))
@@ -853,7 +943,13 @@ def generate() -> None:
         if not required_cols.issubset(set(reader.fieldnames or [])):
             raise GeneratorError(f"Missing required columns in {person_anime_path}")
 
-        for row in tqdm(reader, total=person_anime_total_rows, desc="Reading person-anime works", unit="row"):
+        for row in tqdm(
+            reader,
+            total=person_anime_total_rows,
+            desc="Reading person-anime works",
+            unit="row",
+            disable=not show_progress,
+        ):
             anime_id = parse_int(row.get("anime_mal_id"))
             if anime_id is None or anime_id not in valid_anime_ids:
                 continue
@@ -889,7 +985,13 @@ def generate() -> None:
         if not required_cols.issubset(set(reader.fieldnames or [])):
             raise GeneratorError(f"Missing required columns in {person_voice_path}")
 
-        for row in tqdm(reader, total=person_voice_total_rows, desc="Reading person voice works", unit="row"):
+        for row in tqdm(
+            reader,
+            total=person_voice_total_rows,
+            desc="Reading person voice works",
+            unit="row",
+            disable=not show_progress,
+        ):
             anime_id = parse_int(row.get("anime_mal_id"))
             if anime_id is None or anime_id not in valid_anime_ids:
                 continue
@@ -935,7 +1037,13 @@ def generate() -> None:
         if not required_cols.issubset(set(reader.fieldnames or [])):
             raise GeneratorError(f"Missing required columns in {person_details_path}")
 
-        for row in tqdm(reader, total=person_details_total_rows, desc="Reading person details", unit="row"):
+        for row in tqdm(
+            reader,
+            total=person_details_total_rows,
+            desc="Reading person details",
+            unit="row",
+            disable=not show_progress,
+        ):
             person_id = parse_int(row.get("person_mal_id"))
             if person_id is None or person_id not in person_ids_needed:
                 continue
@@ -980,6 +1088,7 @@ def generate() -> None:
             total=person_alternate_name_total_rows,
             desc="Reading person alternate names",
             unit="row",
+            disable=not show_progress,
         ):
             person_id = parse_int(row.get("person_mal_id"))
             alternate_name = normalize_text(row.get("alt_name"))
@@ -991,7 +1100,13 @@ def generate() -> None:
 
     person_alternate_name_rows = sorted(person_alternate_name_rows_set, key=lambda item: (item[0], item[1]))
 
-    app_user_rows = sample_app_users(n=n, random_seed=args.seed, gender_map=gender_map, country_map=country_map)
+    app_user_rows = sample_app_users(
+        n=n,
+        random_seed=args.seed,
+        gender_map=gender_map,
+        country_map=country_map,
+        show_progress=show_progress,
+    )
 
     person_anime_rows = sorted(
         [row for row in person_anime_rows_map.values() if row[1] in valid_person_ids],
@@ -1007,7 +1122,15 @@ def generate() -> None:
     )
 
     if skipped_anime:
-        print(f"Skipped {skipped_anime} anime due to missing required dependencies")
+        print(f"Warning: skipped {skipped_anime} anime due to missing required dependencies")
+        if skipped_missing_details:
+            print(f"- missing details row: {skipped_missing_details}")
+        if skipped_missing_stats:
+            print(f"- missing stats row: {skipped_missing_stats}")
+        if skipped_missing_lookup:
+            print(f"- missing source/status lookup mapping: {skipped_missing_lookup}")
+        if skipped_missing_text:
+            print(f"- missing required text columns: {skipped_missing_text}")
 
     SEEDS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -1213,7 +1336,12 @@ def generate() -> None:
         ),
     ]
 
-    for out_path, sql_content, row_count in tqdm(outputs, desc="Writing seed SQL files", unit="file"):
+    for out_path, sql_content, row_count in tqdm(
+        outputs,
+        desc="Writing seed SQL files",
+        unit="file",
+        disable=not show_progress,
+    ):
         out_path.write_text(sql_content, encoding="utf-8")
         print(f"Wrote {out_path.relative_to(ROOT)} ({row_count} rows)")
 
